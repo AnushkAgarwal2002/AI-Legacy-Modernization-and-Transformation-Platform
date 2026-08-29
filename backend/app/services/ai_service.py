@@ -372,6 +372,68 @@ def _remove_trailing_commas(text: str) -> str:
     return ''.join(out)
 
 
+def _replace_python_literals(text: str) -> str:
+    """
+    Replace Python/JavaScript literal tokens that are invalid in JSON.
+
+    IBM Bob occasionally writes Python-style ``None``, ``True``, ``False`` or
+    JavaScript's ``undefined`` when producing JSON inside a large response.
+    These all cause "Expecting value" errors because the JSON parser does not
+    recognise them.
+
+    Replacements (only outside string values):
+        None      → null
+        True      → true
+        False     → false
+        undefined → null
+
+    Strategy: build a list of string-literal spans first (identical approach to
+    _sanitize_json_strings / _remove_trailing_commas), then use re.sub with a
+    callback that skips any match that falls inside a string span.
+    """
+    if not text:
+        return text
+
+    # ── Pass 1: locate all string-literal spans ──────────────────────────────
+    string_spans: List[tuple] = []   # (start_inclusive, end_exclusive)
+    in_string = False
+    escape_next = False
+    str_start = -1
+
+    for i, ch in enumerate(text):
+        if escape_next:
+            escape_next = False
+            continue
+        if ch == '\\' and in_string:
+            escape_next = True
+            continue
+        if ch == '"':
+            if in_string:
+                string_spans.append((str_start, i + 1))
+                in_string = False
+            else:
+                str_start = i
+                in_string = True
+
+    # ── Pass 2: substitute tokens that are outside all string spans ───────────
+    _REPLACEMENTS = {
+        'None':      'null',
+        'True':      'true',
+        'False':     'false',
+        'undefined': 'null',
+    }
+    _PATTERN = re.compile(r'\b(None|True|False|undefined)\b')
+
+    def _replace(m: re.Match) -> str:
+        pos = m.start()
+        for start, end in string_spans:
+            if start <= pos < end:
+                return m.group(0)   # inside a string — leave untouched
+        return _REPLACEMENTS[m.group(0)]
+
+    return _PATTERN.sub(_replace, text)
+
+
 def _insert_missing_commas(text: str) -> str:
     """
     Insert commas that IBM Bob omitted between adjacent JSON values.
@@ -510,15 +572,17 @@ def _call_json(
     _extract_json_from_text before parsing.
 
     Recovery pipeline (each stage only runs if the previous parse fails):
-      1. Direct parse of extracted text.
-      2. _sanitize_json_strings  — fixes literal control chars inside strings
-         (bare newlines / tabs in string values).
-      2.5 _remove_trailing_commas — strips trailing commas before } or ]
-         (IBM Bob emits these when the last object member ends with a comma).
-      3. _insert_missing_commas  — inserts commas IBM Bob dropped between
-         adjacent array elements or object members.
-      4. _repair_truncated_json  — closes unbalanced braces/brackets caused by
-         response truncation.
+      1.   Direct parse of extracted text.
+      2.   _sanitize_json_strings   — fixes literal control chars inside strings
+           (bare newlines / tabs in string values).
+      2.5  _remove_trailing_commas  — strips trailing commas before } or ]
+           (IBM Bob emits these when the last object member ends with a comma).
+      2.7  _replace_python_literals — replaces None/True/False/undefined with
+           their JSON equivalents null/true/false (causes "Expecting value").
+      3.   _insert_missing_commas   — inserts commas IBM Bob dropped between
+           adjacent array elements or object members.
+      4.   _repair_truncated_json   — closes unbalanced braces/brackets caused
+           by response truncation.
     """
     # Plain text mode — rely on the prompt's "Return ONLY raw JSON" instruction
     raw = call_ai(messages, response_format="text", temperature=temperature, max_tokens=max_tokens)
@@ -544,8 +608,15 @@ def _call_json(
     except json.JSONDecodeError:
         pass
 
+    # Stage 2.7: replace Python/JS literals (None→null, True→true, etc.)
+    py_fixed = _replace_python_literals(no_trailing)
+    try:
+        return json.loads(py_fixed)
+    except json.JSONDecodeError:
+        pass
+
     # Stage 3: insert missing commas between adjacent values
-    comma_fixed = _insert_missing_commas(no_trailing)
+    comma_fixed = _insert_missing_commas(py_fixed)
     try:
         return json.loads(comma_fixed)
     except json.JSONDecodeError:
