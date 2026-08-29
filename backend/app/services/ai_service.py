@@ -317,6 +317,61 @@ def _sanitize_json_strings(text: str) -> str:
     return ''.join(out)
 
 
+def _remove_trailing_commas(text: str) -> str:
+    """
+    Remove trailing commas before '}' or ']' that make JSON invalid.
+
+    IBM Bob occasionally emits a comma after the last member of an object or
+    the last element of an array (e.g. ``{"key": "value",}``), which is legal
+    JavaScript/Python but invalid JSON and causes:
+        Expecting property name enclosed in double quotes
+
+    Strategy: walk the text with a string-aware state machine identical to
+    _sanitize_json_strings.  Track the output index of the most-recently
+    emitted comma.  When a closing bracket is reached while that index is still
+    live (only whitespace has been seen since the comma), blank out the comma.
+    """
+    out: List[str] = []
+    in_string = False
+    escape_next = False
+    pending_comma_idx = -1   # index in `out` of a potentially-trailing comma
+
+    for ch in text:
+        if escape_next:
+            escape_next = False
+            out.append(ch)
+            continue
+
+        if ch == '\\' and in_string:
+            escape_next = True
+            out.append(ch)
+            continue
+
+        if ch == '"':
+            in_string = not in_string
+            if not in_string:
+                # Closing quote of a string value — comma before this is not trailing
+                pending_comma_idx = -1
+            out.append(ch)
+            continue
+
+        if not in_string:
+            if ch == ',':
+                pending_comma_idx = len(out)
+                out.append(ch)
+                continue
+            if ch in ('}', ']') and pending_comma_idx >= 0:
+                out[pending_comma_idx] = ''   # erase the trailing comma
+                pending_comma_idx = -1
+            elif ch not in (' ', '\t', '\n', '\r'):
+                # Any non-whitespace structural char other than a closer resets
+                pending_comma_idx = -1
+
+        out.append(ch)
+
+    return ''.join(out)
+
+
 def _insert_missing_commas(text: str) -> str:
     """
     Insert commas that IBM Bob omitted between adjacent JSON values.
@@ -458,6 +513,8 @@ def _call_json(
       1. Direct parse of extracted text.
       2. _sanitize_json_strings  — fixes literal control chars inside strings
          (bare newlines / tabs in string values).
+      2.5 _remove_trailing_commas — strips trailing commas before } or ]
+         (IBM Bob emits these when the last object member ends with a comma).
       3. _insert_missing_commas  — inserts commas IBM Bob dropped between
          adjacent array elements or object members.
       4. _repair_truncated_json  — closes unbalanced braces/brackets caused by
@@ -480,8 +537,15 @@ def _call_json(
     except json.JSONDecodeError:
         pass
 
+    # Stage 2.5: remove trailing commas before } or ] (invalid in JSON)
+    no_trailing = _remove_trailing_commas(sanitized)
+    try:
+        return json.loads(no_trailing)
+    except json.JSONDecodeError:
+        pass
+
     # Stage 3: insert missing commas between adjacent values
-    comma_fixed = _insert_missing_commas(sanitized)
+    comma_fixed = _insert_missing_commas(no_trailing)
     try:
         return json.loads(comma_fixed)
     except json.JSONDecodeError:
