@@ -1,0 +1,11 @@
+INFO:     Will watch for changes in these directories: ['C:\\Files\\Projects\\AI-Assisted Legacy Application Modernization and Transformation Platform\\backend']
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [30792] using StatReload
+INFO:     Started server process [28800]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'startup_check.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [28800]
