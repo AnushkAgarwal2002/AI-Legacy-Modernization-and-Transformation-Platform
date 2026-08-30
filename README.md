@@ -1,4 +1,4 @@
-# ModernizeAI — AI-Assisted Legacy Application Modernization Platform
+# ModernIQ — AI-Assisted Legacy Application Modernization Platform
 
 > **Hackathon Submission** — AI-Assisted Legacy Application Modernization and Transformation Platform powered by IBM Bob
 
