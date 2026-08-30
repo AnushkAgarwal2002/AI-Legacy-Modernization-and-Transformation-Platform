@@ -264,6 +264,32 @@ def _extract_json_from_text(text: str) -> str:
     return text
 
 
+def _walk_json(text: str):
+    """
+    Generator that yields (index, char, in_string) for each character in
+    *text*, correctly tracking JSON string state including escape sequences.
+
+    Callers that only care about structural characters outside strings can
+    filter by ``not in_string``.
+    """
+    in_string = False
+    escape_next = False
+    for i, ch in enumerate(text):
+        if escape_next:
+            escape_next = False
+            yield i, ch, in_string
+            continue
+        if ch == '\\' and in_string:
+            escape_next = True
+            yield i, ch, in_string
+            continue
+        if ch == '"':
+            yield i, ch, in_string
+            in_string = not in_string
+            continue
+        yield i, ch, in_string
+
+
 def _sanitize_json_strings(text: str) -> str:
     """
     Walk a JSON text and escape any bare control characters (0x00-0x1F) that
@@ -288,31 +314,11 @@ def _sanitize_json_strings(text: str) -> str:
     }
 
     out: List[str] = []
-    in_string = False
-    escape_next = False
-
-    for ch in text:
-        if escape_next:
-            escape_next = False
-            out.append(ch)
-            continue
-
-        if ch == '\\' and in_string:
-            escape_next = True
-            out.append(ch)
-            continue
-
-        if ch == '"':
-            in_string = not in_string
-            out.append(ch)
-            continue
-
+    for _i, ch, in_string in _walk_json(text):
         if in_string and ch in CONTROL_ESCAPES:
-            # Replace bare control char with its JSON escape sequence
             out.append(CONTROL_ESCAPES[ch])
-            continue
-
-        out.append(ch)
+        else:
+            out.append(ch)
 
     return ''.join(out)
 
@@ -326,50 +332,67 @@ def _remove_trailing_commas(text: str) -> str:
     JavaScript/Python but invalid JSON and causes:
         Expecting property name enclosed in double quotes
 
-    Strategy: walk the text with a string-aware state machine identical to
-    _sanitize_json_strings.  Track the output index of the most-recently
-    emitted comma.  When a closing bracket is reached while that index is still
-    live (only whitespace has been seen since the comma), blank out the comma.
+    Strategy: use _walk_json to correctly identify structural chars outside
+    strings.  Track the output index of the most-recently emitted comma.  When
+    a closing bracket is reached while that index is still live (only whitespace
+    has been seen since the comma), blank out the comma.
     """
     out: List[str] = []
-    in_string = False
-    escape_next = False
     pending_comma_idx = -1   # index in `out` of a potentially-trailing comma
 
-    for ch in text:
-        if escape_next:
-            escape_next = False
-            out.append(ch)
-            continue
-
-        if ch == '\\' and in_string:
-            escape_next = True
-            out.append(ch)
-            continue
-
-        if ch == '"':
-            in_string = not in_string
-            if not in_string:
-                # Closing quote of a string value — comma before this is not trailing
-                pending_comma_idx = -1
-            out.append(ch)
-            continue
-
-        if not in_string:
+    for _i, ch, in_string in _walk_json(text):
+        if not in_string and ch != '"':
+            # Structural character outside a string
             if ch == ',':
                 pending_comma_idx = len(out)
-                out.append(ch)
-                continue
-            if ch in ('}', ']') and pending_comma_idx >= 0:
-                out[pending_comma_idx] = ''   # erase the trailing comma
-                pending_comma_idx = -1
+            elif ch in ('}', ']'):
+                if pending_comma_idx >= 0:
+                    out[pending_comma_idx] = ''   # erase the trailing comma
+                    pending_comma_idx = -1
             elif ch not in (' ', '\t', '\n', '\r'):
-                # Any non-whitespace structural char other than a closer resets
+                # Any non-whitespace, non-comma structural char resets the tracker
+                pending_comma_idx = -1
+        elif in_string or ch == '"':
+            # Inside or delimiting a string — a comma before a string value is
+            # never trailing, so reset only when we encounter the *opening* quote
+            # (in_string is still False at that point per _walk_json yield order)
+            if ch == '"' and not in_string:
+                # Opening quote of a string — comma before it is not trailing
                 pending_comma_idx = -1
 
         out.append(ch)
 
     return ''.join(out)
+
+
+def _string_spans(text: str) -> List[tuple]:
+    """
+    Return a list of (start, end) byte ranges for every JSON string literal
+    in *text*, where start is the position of the opening '"' and end is the
+    position just after the closing '"'.
+
+    Uses its own escape-aware loop so that a backslash-escaped quote inside a
+    string value (\\") is never mistaken for a closing delimiter.
+    """
+    spans: List[tuple] = []
+    in_str = False
+    esc = False
+    str_start = -1
+    for i, ch in enumerate(text):
+        if esc:
+            esc = False
+            continue
+        if ch == '\\' and in_str:
+            esc = True
+            continue
+        if ch == '"':
+            if in_str:
+                spans.append((str_start, i + 1))
+                in_str = False
+            else:
+                str_start = i
+                in_str = True
+    return spans
 
 
 def _replace_python_literals(text: str) -> str:
@@ -386,36 +409,12 @@ def _replace_python_literals(text: str) -> str:
         True      → true
         False     → false
         undefined → null
-
-    Strategy: build a list of string-literal spans first (identical approach to
-    _sanitize_json_strings / _remove_trailing_commas), then use re.sub with a
-    callback that skips any match that falls inside a string span.
     """
     if not text:
         return text
 
-    # ── Pass 1: locate all string-literal spans ──────────────────────────────
-    string_spans: List[tuple] = []   # (start_inclusive, end_exclusive)
-    in_string = False
-    escape_next = False
-    str_start = -1
+    spans = _string_spans(text)
 
-    for i, ch in enumerate(text):
-        if escape_next:
-            escape_next = False
-            continue
-        if ch == '\\' and in_string:
-            escape_next = True
-            continue
-        if ch == '"':
-            if in_string:
-                string_spans.append((str_start, i + 1))
-                in_string = False
-            else:
-                str_start = i
-                in_string = True
-
-    # ── Pass 2: substitute tokens that are outside all string spans ───────────
     _REPLACEMENTS = {
         'None':      'null',
         'True':      'true',
@@ -426,7 +425,7 @@ def _replace_python_literals(text: str) -> str:
 
     def _replace(m: re.Match) -> str:
         pos = m.start()
-        for start, end in string_spans:
+        for start, end in spans:
             if start <= pos < end:
                 return m.group(0)   # inside a string — leave untouched
         return _REPLACEMENTS[m.group(0)]
@@ -444,94 +443,44 @@ def _insert_missing_commas(text: str) -> str:
         [{"id": "a"} {"id": "b"}]          <- missing comma between objects
         {"k1": "v1" "k2": "v2"}            <- missing comma between members
 
-    Strategy
-    --------
-    Reduce the text to a *structural skeleton* — replace every string literal
-    with a fixed placeholder S (one character), and strip whitespace — then
-    apply a simple regex to insert commas wherever:
-
-        (} or ] or S)  followed by  ({ or [ or S)
-
-    without an intervening separator (, : { [).
-
-    After inserting commas into the skeleton, map the insertion positions back
-    to the original text and rebuild it.
-
-    This avoids all state-machine subtleties because we never try to insert
-    commas "inline" during a single character walk.
+    Strategy: collect structural tokens (using _string_spans + _walk_json) then
+    find positions where a value-end is directly followed by a value-start with
+    no intervening separator, and insert a comma before the value-start.
     """
     if not text:
         return text
 
-    # ── Pass 1: identify string-literal spans ────────────────────────────────
-    # string_spans: list of (start, end) positions of complete string literals
-    # (start = position of opening ", end = position just after closing ")
-    string_spans: List[tuple] = []
-    in_string = False
-    escape_next = False
-    str_start = -1
+    # ── Pass 1: identify complete string spans ───────────────────────────────
+    string_spans = _string_spans(text)
+    str_starts = {start for start, _ in string_spans}
+    str_ends   = {end   for _, end   in string_spans}
 
-    for i, ch in enumerate(text):
-        if escape_next:
-            escape_next = False
-            continue
-        if ch == '\\' and in_string:
-            escape_next = True
-            continue
-        if ch == '"':
-            if in_string:
-                # Closing quote
-                string_spans.append((str_start, i + 1))
-                in_string = False
-            else:
-                # Opening quote
-                str_start = i
-                in_string = True
-            continue
-
-    # ── Pass 2: collect structural tokens outside strings ────────────────────
-    # Token types that matter: VALUE_END = } ] str_literal
-    #                          VALUE_START = { [ str_literal
-    #                          SEPARATOR = , : { [
-    # We emit "S" for a complete string literal, and the raw char for { } [ ] , :
-
-    # Build a set of positions that are inside string literals
+    # Build a set of all positions that belong to a string literal
     in_string_pos: set = set()
     for start, end in string_spans:
         for p in range(start, end):
             in_string_pos.add(p)
-    # Add positions of opening quotes (str_start values)
-    # Already included above.
 
-    # Collect (original_pos, token_char) for all structural tokens + string starts
-    # We treat each complete string as a single token at its opening-quote position.
-    tokens: List[tuple] = []  # (original_pos, kind)  kind ∈ 'S', '{', '}', '[', ']', ',', ':'
+    # ── Pass 2: collect structural tokens ────────────────────────────────────
+    tokens: List[tuple] = []  # (original_pos, kind)
     i = 0
     while i < len(text):
-        if text[i] == '"' and i not in in_string_pos:
-            # Should not happen — all " are either opening or inside strings
-            i += 1
-            continue
-        # Is this the start of a string span?
-        is_str_start = any(start == i for start, _ in string_spans)
-        if is_str_start:
+        if i in str_starts:
             tokens.append((i, 'S'))
-            # Skip to end of this string span
-            end = next(end for start, end in string_spans if start == i)
+            end = next(e for s, e in string_spans if s == i)
             i = end
             continue
-        ch = text[i]
-        if ch in ('{', '}', '[', ']', ',', ':'):
-            tokens.append((i, ch))
+        if i not in in_string_pos and text[i] in ('{', '}', '[', ']', ',', ':'):
+            tokens.append((i, text[i]))
         i += 1
 
-    # ── Pass 3: find positions where commas need to be inserted ───────────────
+    # ── Pass 3: find missing commas ──────────────────────────────────────────
     VALUE_END   = frozenset(('S', '}', ']'))
     VALUE_START = frozenset(('S', '{', '['))
     CLEARS_NEED = frozenset((',', ':', '{', '['))
 
-    insert_before: List[int] = []  # original positions to insert ',' before
-    need_comma = False  # True if last meaningful token was a value-end
+    insert_before: List[int] = []
+    need_comma = False
 
     for orig_pos, kind in tokens:
         if kind in VALUE_START and need_comma:
@@ -541,9 +490,8 @@ def _insert_missing_commas(text: str) -> str:
             need_comma = False
         elif kind in VALUE_END:
             need_comma = True
-        # ',' and ':' already handled by CLEARS_NEED above
 
-    # ── Pass 4: rebuild text with inserted commas ─────────────────────────────
+    # ── Pass 4: rebuild with inserted commas ─────────────────────────────────
     if not insert_before:
         return text
 
@@ -555,6 +503,218 @@ def _insert_missing_commas(text: str) -> str:
         result.append(ch)
 
     return ''.join(result)
+
+
+def _fix_unescaped_inner_quotes(text: str) -> str:
+    """
+    Detect and escape bare double-quotes that the model placed *inside* a JSON
+    string value without a preceding backslash.
+
+    IBM Bob occasionally emits text like:
+
+        "evidence": "See "application-context.xml" for details"
+        "description": "Uses ("app-context.xml", "app-security.xml") here"
+
+    Strategy — structural-context forward scan:
+    ────────────────────────────────────────────
+    Walk the text maintaining a full JSON structural stack (inside object key,
+    inside object value, inside array element).  A ``"`` that closes what the
+    stack says is a *value* string needs to be validated: peek forward past
+    whitespace and check that the next character is a legitimate value-end token
+    (``,``, ``}``, ``]``).
+
+    If the next character is NOT one of those and we are definitely inside a
+    value string (not a key), the ``"`` is a false close from an unescaped inner
+    quote.  Replace it with ``\\"`` and stay inside the string.
+
+    To disambiguate ``,`` (which can follow either a genuine string close OR an
+    inner quoted phrase like ``"foo.xml", "bar.xml"``), we additionally check:
+    when a ``,`` follows the presumed close, look at what comes after the ``,``
+    to decide if we're still inside a value:
+
+      - ``,`` then ``"`` then eventually ``:`` → the ``,``-separated token is a
+        new key-value pair → the close was genuine.
+      - ``,`` then ``"`` with NO ``:`` before the next ``"`` closes → the token
+        after ``,`` is an inner quoted phrase, not a key → the close was false.
+
+    This check is O(N²) in the worst case but N is bounded by the response size
+    and the number of inner quotes is small in practice.
+    """
+    if '"' not in text:
+        return text
+
+    n = len(text)
+    MAX_ITERATIONS = 30
+
+    def _has_colon_after_next_string(start: int) -> bool:
+        """
+        Starting just after a ``,`` that followed a presumed string-close,
+        skip whitespace, then read the next complete string literal, then
+        check if the very next non-whitespace character is ``:``.
+
+        If yes → the string we skipped is a JSON object key → the preceding
+        string-close was genuine (it ended a value, and the ``,`` separates
+        key-value pairs).
+
+        If no → the string after the comma is a continuation of an inner
+        quoted phrase, not a new key → the preceding close was a false close.
+        """
+        j = start
+        while j < n and text[j] in (' ', '\t', '\n', '\r'):
+            j += 1
+        if j >= n or text[j] != '"':
+            # Not a string after the comma → this comma is between array elements
+            # or before a non-string value; treat as genuine close.
+            return True
+        # Skip the complete string literal with proper escape handling
+        j += 1  # skip opening quote
+        esc2 = False
+        while j < n:
+            c = text[j]
+            if esc2:
+                esc2 = False
+                j += 1
+                continue
+            if c == '\\':
+                esc2 = True
+                j += 1
+                continue
+            if c == '"':
+                j += 1  # closing quote — move past it
+                break
+            j += 1
+        # Now j is just after the closing quote; skip whitespace
+        while j < n and text[j] in (' ', '\t', '\n', '\r'):
+            j += 1
+        return j < n and text[j] == ':'
+
+    for _ in range(MAX_ITERATIONS):
+        # Walk text tracking: are we inside a string that is a VALUE (not a key)?
+        # JSON structure alternates: after ``{`` comes a key, after ``:`` comes a
+        # value, after ``,`` inside an object comes a key again, etc.
+        # We track this with a simple state machine.
+        #
+        # States: EXPECT_KEY, EXPECT_COLON, EXPECT_VALUE, IN_VALUE_STRING,
+        #         IN_KEY_STRING, EXPECT_COMMA_OR_CLOSE
+
+        out: List[str] = []
+        # Stack of container types: 'O' (object) or 'A' (array)
+        containers: List[str] = []
+        # True when the current position is inside a value string (not key)
+        in_value_str = False
+        in_key_str = False
+        expect_value = False   # True immediately after ':'
+        after_open = True      # True at doc start or just after '{' / '[' or ','
+        esc = False
+        changed = False
+
+        i = 0
+        while i < n:
+            ch = text[i]
+
+            if esc:
+                esc = False
+                out.append(ch)
+                i += 1
+                continue
+
+            if ch == '\\' and (in_value_str or in_key_str):
+                esc = True
+                out.append(ch)
+                i += 1
+                continue
+
+            if ch == '"':
+                if in_key_str:
+                    # Closing key string
+                    in_key_str = False
+                    expect_value = False  # will flip to True when we see ':'
+                    out.append(ch)
+                    i += 1
+                    continue
+
+                if in_value_str:
+                    # Potential close of a value string — validate
+                    j = i + 1
+                    while j < n and text[j] in (' ', '\t', '\n', '\r'):
+                        j += 1
+                    next_ch = text[j] if j < n else ''
+
+                    genuine_close = False
+                    if next_ch in ('}', ']', ''):
+                        genuine_close = True
+                    elif next_ch == ':':
+                        genuine_close = True
+                    elif next_ch == ',':
+                        # Comma could follow a genuine close or an inner phrase.
+                        # Check if what comes after the comma is a JSON key.
+                        if containers and containers[-1] == 'O':
+                            # Inside an object: after comma we expect a key (has colon)
+                            genuine_close = _has_colon_after_next_string(j + 1)
+                        else:
+                            # Inside an array: comma always precedes the next element
+                            genuine_close = True
+                    elif next_ch == '"':
+                        # Quote immediately after close — start of next string
+                        # This is genuine only if we're in an array context
+                        genuine_close = bool(containers and containers[-1] == 'A')
+
+                    if genuine_close:
+                        in_value_str = False
+                        expect_value = False
+                        after_open = False
+                        out.append(ch)
+                        i += 1
+                        continue
+                    else:
+                        # Inner quote — escape it
+                        out.append('\\')
+                        out.append('"')
+                        changed = True
+                        i += 1
+                        continue
+
+                # Not in any string — this is an opening quote
+                if expect_value or (containers and containers[-1] == 'A' and after_open):
+                    in_value_str = True
+                    expect_value = False
+                    after_open = False
+                else:
+                    in_key_str = True
+                    after_open = False
+                out.append(ch)
+                i += 1
+                continue
+
+            if not in_value_str and not in_key_str:
+                if ch == '{':
+                    containers.append('O')
+                    after_open = True
+                    expect_value = False
+                elif ch == '[':
+                    containers.append('A')
+                    after_open = True
+                    expect_value = False
+                elif ch in ('}', ']'):
+                    if containers:
+                        containers.pop()
+                    after_open = False
+                    expect_value = False
+                elif ch == ':':
+                    expect_value = True
+                    after_open = False
+                elif ch == ',':
+                    after_open = True
+                    expect_value = False
+
+            out.append(ch)
+            i += 1
+
+        if not changed:
+            break
+        text = ''.join(out)
+
+    return text
 
 
 def _call_json(
@@ -573,64 +733,85 @@ def _call_json(
 
     Recovery pipeline (each stage only runs if the previous parse fails):
       1.   Direct parse of extracted text.
-      2.   _sanitize_json_strings   — fixes literal control chars inside strings
-           (bare newlines / tabs in string values).
-      2.5  _remove_trailing_commas  — strips trailing commas before } or ]
-           (IBM Bob emits these when the last object member ends with a comma).
-      2.7  _replace_python_literals — replaces None/True/False/undefined with
-           their JSON equivalents null/true/false (causes "Expecting value").
-      3.   _insert_missing_commas   — inserts commas IBM Bob dropped between
-           adjacent array elements or object members.
-      4.   _repair_truncated_json   — closes unbalanced braces/brackets caused
-           by response truncation.
+      2.   _sanitize_json_strings   — fixes literal control chars inside strings.
+      2.5  _remove_trailing_commas  — strips trailing commas before } or ].
+      2.7  _replace_python_literals — replaces None/True/False/undefined.
+      3.   _insert_missing_commas   — inserts omitted commas between values.
+      4.   _repair_truncated_json   — closes unbalanced braces/brackets.
+
+    Each stage propagates its output to the next only when it changed
+    something, so a stage that makes things worse is never the base for
+    subsequent stages.
     """
-    # Plain text mode — rely on the prompt's "Return ONLY raw JSON" instruction
     raw = call_ai(messages, response_format="text", temperature=temperature, max_tokens=max_tokens)
     text = _extract_json_from_text(raw)
 
-    # Stage 1: direct parse
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
+    def _try(t: str) -> Optional[Dict]:
+        try:
+            return json.loads(t)
+        except json.JSONDecodeError:
+            return None
+
+    # Stage 1
+    result = _try(text)
+    if result is not None:
+        return result
 
     # Stage 2: sanitize bare control characters inside string values
-    sanitized = _sanitize_json_strings(text)
-    try:
-        return json.loads(sanitized)
-    except json.JSONDecodeError:
-        pass
+    s2 = _sanitize_json_strings(text)
+    result = _try(s2)
+    if result is not None:
+        return result
+    base = s2 if s2 != text else text
 
-    # Stage 2.5: remove trailing commas before } or ] (invalid in JSON)
-    no_trailing = _remove_trailing_commas(sanitized)
-    try:
-        return json.loads(no_trailing)
-    except json.JSONDecodeError:
-        pass
+    # Stage 2.3: escape bare double-quotes inside string values
+    s23 = _fix_unescaped_inner_quotes(base)
+    result = _try(s23)
+    if result is not None:
+        return result
+    base = s23 if s23 != base else base
 
-    # Stage 2.7: replace Python/JS literals (None→null, True→true, etc.)
-    py_fixed = _replace_python_literals(no_trailing)
-    try:
-        return json.loads(py_fixed)
-    except json.JSONDecodeError:
-        pass
+    # Stage 2.5: remove trailing commas
+    s25 = _remove_trailing_commas(base)
+    result = _try(s25)
+    if result is not None:
+        return result
+    base = s25 if s25 != base else base
 
-    # Stage 3: insert missing commas between adjacent values
-    comma_fixed = _insert_missing_commas(py_fixed)
-    try:
-        return json.loads(comma_fixed)
-    except json.JSONDecodeError:
-        pass
+    # Stage 2.7: replace Python/JS literals
+    s27 = _replace_python_literals(base)
+    result = _try(s27)
+    if result is not None:
+        return result
+    base = s27 if s27 != base else base
 
-    # Stage 4: attempt to close truncated JSON by balancing braces/brackets
-    repaired = _repair_truncated_json(comma_fixed)
+    # Stage 3: insert missing commas
+    s3 = _insert_missing_commas(base)
+    result = _try(s3)
+    if result is not None:
+        return result
+    base = s3 if s3 != base else base
+
+    # Stage 4: repair truncated JSON (close open brackets/braces)
+    s4 = _repair_truncated_json(base)
+    result = _try(s4)
+    if result is not None:
+        return result
+
+    # All stages failed — log enough context to diagnose and raise
     try:
-        return json.loads(repaired)
+        json.loads(s4)
     except json.JSONDecodeError as exc:
+        logger.error(
+            "JSON repair failed after all stages. Error: %s | "
+            "Raw preview (first 400 chars): %.400s",
+            exc, raw,
+        )
         raise AIServiceError(
             f"IBM Bob returned malformed JSON that could not be repaired: {exc}. "
             f"Response preview: {raw[:200]}"
         ) from exc
+    raise AIServiceError("JSON repair failed")  # pragma: no cover
 
 
 def _repair_truncated_json(text: str) -> str:
@@ -639,83 +820,71 @@ def _repair_truncated_json(text: str) -> str:
 
     Strategy
     --------
-    1. Walk the text tracking string state and a *stack* of open containers
-       ({ and [), so we know the exact nesting order and can close them in
-       the correct reverse order.
-    2. Record the position after every fully balanced top-level close, so we
-       can fall back to the last known-good point.
-    3. If truncated mid-string, close the string first, then pop and close
-       every open container in reverse order.
+    1. Use a dedicated _json_stack() helper (escape-sequence-aware, built on
+       the same _walk_json generator used by every other repair stage) to walk
+       the text and compute:
+         - the open-container stack
+         - whether we ended inside a string
+         - the last fully balanced top-level boundary (last_safe_pos)
+         - the position just after the last '}' at any depth (last_obj_end)
+    2. If already balanced, return text[:last_safe_pos].
+    3. If truncated mid-string, trim back to last_obj_end so we don't leave
+       a half-written string in an incomplete array element, then recompute.
+    4. Close any remaining open containers in reverse order.
     """
-    stack: List[str] = []   # '{' or '[' for each currently open container
-    in_string = False
-    escape_next = False
-    last_safe_pos = 0
-    last_obj_end = 0   # position just after the last '}' at any depth
+    def _json_stack(t: str):
+        """Return (stack, in_string, last_safe_pos, last_obj_end) for text t."""
+        stack: List[str] = []
+        last_safe_pos = 0
+        last_obj_end = 0
+        # Track in_string via a simple escape-aware counter (not via _walk_json
+        # because we also need the final in_string state after the last char).
+        in_str = False
+        esc = False
+        for i, ch in enumerate(t):
+            if esc:
+                esc = False
+                continue
+            if ch == '\\' and in_str:
+                esc = True
+                continue
+            if ch == '"':
+                in_str = not in_str
+                continue
+            if in_str:
+                continue
+            if ch in ('{', '['):
+                stack.append(ch)
+            elif ch == '}':
+                if stack and stack[-1] == '{':
+                    stack.pop()
+                last_obj_end = i + 1
+                if not stack:
+                    last_safe_pos = i + 1
+            elif ch == ']':
+                if stack and stack[-1] == '[':
+                    stack.pop()
+                if not stack:
+                    last_safe_pos = i + 1
+        return stack, in_str, last_safe_pos, last_obj_end
 
-    for i, ch in enumerate(text):
-        if escape_next:
-            escape_next = False
-            continue
-        if ch == "\\" and in_string:
-            escape_next = True
-            continue
-        if ch == '"' and not escape_next:
-            in_string = not in_string
-            continue
-        if in_string:
-            continue
-        if ch in ("{", "["):
-            stack.append(ch)
-        elif ch == "}":
-            if stack and stack[-1] == "{":
-                stack.pop()
-            last_obj_end = i + 1
-            if not stack:
-                last_safe_pos = i + 1
-        elif ch == "]":
-            if stack and stack[-1] == "[":
-                stack.pop()
-            if not stack:
-                last_safe_pos = i + 1
+    stack, in_string, last_safe_pos, last_obj_end = _json_stack(text)
 
     # Already balanced
     if not stack and not in_string:
         return text[:last_safe_pos] if last_safe_pos else text
 
-    # Truncated mid-string: trim to the last complete object boundary so we
-    # don't leave a half-written string value in an incomplete array element.
+    # Truncated mid-string: trim to the last complete object boundary
     if in_string and last_obj_end > 0:
         text = text[:last_obj_end]
-        # Recompute stack for the trimmed text
-        stack = []
-        in_string = False
-        escape_next = False
-        for ch in text:
-            if escape_next:
-                escape_next = False
-                continue
-            if ch == "\\" and in_string:
-                escape_next = True
-                continue
-            if ch == '"' and not escape_next:
-                in_string = not in_string
-                continue
-            if in_string:
-                continue
-            if ch in ("{", "["):
-                stack.append(ch)
-            elif ch == "}" and stack and stack[-1] == "{":
-                stack.pop()
-            elif ch == "]" and stack and stack[-1] == "[":
-                stack.pop()
+        stack, in_string, last_safe_pos, last_obj_end = _json_stack(text)
 
-    # Build the closing suffix in reverse-stack order
-    closing = ""
+    # Close all open containers in reverse order
+    closing = ''
     if in_string:
         closing += '"'
     for opener in reversed(stack):
-        closing += "}" if opener == "{" else "]"
+        closing += '}' if opener == '{' else ']'
     return text + closing
 
 
@@ -926,7 +1095,7 @@ Provide 6-10 nodes per architecture diagram, 4-5 migration stages with 2-4 tasks
     # two largest structures and was the most frequent truncation victim.
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
         future1  = executor.submit(_call_json, messages1,  0.2, 4096)
-        future2a = executor.submit(_call_json, messages2a, 0.2, 3500)
+        future2a = executor.submit(_call_json, messages2a, 0.2, 4500)
         future2b = executor.submit(_call_json, messages2b, 0.2, 4500)
         result1  = future1.result(timeout=300)
         result2a = future2a.result(timeout=300)

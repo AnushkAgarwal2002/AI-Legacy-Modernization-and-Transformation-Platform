@@ -5,6 +5,8 @@ import { useApp } from '../context/AppContext'
 import { Play, RefreshCw, XCircle, AlertTriangle, Database, Layers, Package, Code2, Zap } from 'lucide-react'
 import toast from 'react-hot-toast'
 import AIChatPanel from '../components/AIChatPanel'
+import ErrorBoundary from '../components/ErrorBoundary'
+import PageHeader from '../components/PageHeader'
 
 export default function Analysis() {
   const { projectId } = useParams<{ projectId: string }>()
@@ -14,7 +16,14 @@ export default function Analysis() {
   const [loading, setLoading] = useState(true)
   const [starting, setStarting] = useState(false)
   const [fileCount, setFileCount] = useState(0)
-  const [activeTab, setActiveTab] = useState('technology')
+  // Persist the active tab per-project so a browser refresh restores the last view.
+  const tabKey = `analysis-tab-${projectId}`
+  const [activeTab, setActiveTab] = useState(() => sessionStorage.getItem(tabKey) || 'technology')
+
+  const switchTab = useCallback((tab: string) => {
+    sessionStorage.setItem(tabKey, tab)
+    setActiveTab(tab)
+  }, [tabKey])
 
   const load = useCallback(async () => {
     if (!projectId) return
@@ -34,7 +43,8 @@ export default function Analysis() {
   useEffect(() => {
     setAnalysis(null)
     setLoading(true)
-    setActiveTab('technology')
+    // Restore saved tab for this project (or default to 'technology')
+    setActiveTab(sessionStorage.getItem(tabKey) || 'technology')
     load()
   }, [projectId]) // reset + reload whenever project changes
 
@@ -80,9 +90,22 @@ export default function Analysis() {
   const deps = analysis?.dependencies || {}
   const arch = analysis?.architecture || {}
 
+  /** Safely convert any value to a display string — guards against the AI
+   *  returning objects or numbers where string array items are expected. */
+  const toStr = (v: unknown): string => {
+    if (v == null) return ''
+    if (typeof v === 'string') return v
+    if (typeof v === 'object') {
+      const o = v as Record<string, unknown>
+      // Common shapes the model uses: {name, description}, {title}, {value}
+      return String(o.name ?? o.title ?? o.label ?? o.value ?? o.description ?? JSON.stringify(v))
+    }
+    return String(v)
+  }
+
   return (
     <div style={{ height: '100%', overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
-      <div className="page-header">
+      <PageHeader>
         <h1>Application Analysis</h1>
         <div style={{ display: 'flex', gap: 8 }}>
           {analysis?.status === 'completed' && (
@@ -102,7 +125,7 @@ export default function Analysis() {
             }
           </button>
         </div>
-      </div>
+      </PageHeader>
 
       <div className="page-body">
         {analysisStatus === 'running' && (
@@ -113,7 +136,7 @@ export default function Analysis() {
               <div className="ai-dot" />
             </div>
             <div>
-              <strong>IBM Bob is analyzing your legacy codebase</strong>
+              <strong>ModernIQ is analyzing your legacy codebase</strong>
               {' '}— examining technology stack, architecture, dependencies, and technical debt. This typically takes 60–120 seconds.
             </div>
           </div>
@@ -155,13 +178,14 @@ export default function Analysis() {
                 { id: 'dependencies',  label: 'Dependencies',   icon: Package },
                 { id: 'architecture',  label: 'Architecture',   icon: Database },
               ].map(t => (
-                <button key={t.id} className={`tab-btn ${activeTab === t.id ? 'active' : ''}`} onClick={() => setActiveTab(t.id)}>
+                <button key={t.id} className={`tab-btn ${activeTab === t.id ? 'active' : ''}`} onClick={() => switchTab(t.id)}>
                   <t.icon size={13} />
                   {t.label}
                 </button>
               ))}
             </div>
 
+            <ErrorBoundary key={activeTab}>
             {activeTab === 'technology' && (
               <div className="grid-2">
                 {[
@@ -178,9 +202,9 @@ export default function Analysis() {
                         {section.label}
                       </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                        {section.items.map((item: string) => (
-                          <span key={item} className="insight-pill" style={{ color: section.color, borderColor: section.color + '30' }}>
-                            {item}
+                        {section.items.map((item: unknown, idx: number) => (
+                          <span key={idx} className="insight-pill" style={{ color: section.color, borderColor: section.color + '30' }}>
+                            {toStr(item)}
                           </span>
                         ))}
                       </div>
@@ -192,7 +216,7 @@ export default function Analysis() {
                     <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10 }}>
                       Runtime Platform
                     </div>
-                    <span className="badge badge-info" style={{ fontSize: 12, padding: '4px 12px' }}>{tech.runtime_platform}</span>
+                    <span className="badge badge-info" style={{ fontSize: 12, padding: '4px 12px' }}>{toStr(tech.runtime_platform)}</span>
                   </div>
                 )}
                 {tech.deployment_assumptions?.length > 0 && (
@@ -201,10 +225,10 @@ export default function Analysis() {
                       Deployment Observations
                     </div>
                     <ul style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {tech.deployment_assumptions.map((d: string, i: number) => (
+                      {tech.deployment_assumptions.map((d: unknown, i: number) => (
                         <li key={i} style={{ color: 'var(--text-secondary)', fontSize: 13, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                           <span style={{ color: 'var(--text-muted)', flexShrink: 0, marginTop: 2 }}>·</span>
-                          {d}
+                          {toStr(d)}
                         </li>
                       ))}
                     </ul>
@@ -229,8 +253,8 @@ export default function Analysis() {
                         {section.label}
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        {section.items.map((item: string) => (
-                          <div key={item} style={{
+                        {section.items.map((item: unknown, idx: number) => (
+                          <div key={idx} style={{
                             fontSize: 12,
                             fontFamily: 'var(--mono)',
                             color: 'var(--text-secondary)',
@@ -239,7 +263,7 @@ export default function Analysis() {
                             borderRadius: 5,
                             border: '1px solid var(--border)',
                           }}>
-                            {item}
+                            {toStr(item)}
                           </div>
                         ))}
                       </div>
@@ -254,13 +278,13 @@ export default function Analysis() {
                 {deps.deprecated?.length > 0 && (
                   <div className="alert alert-danger" style={{ marginBottom: 16 }}>
                     <AlertTriangle size={14} />
-                    <div><strong>Deprecated dependencies:</strong> {deps.deprecated.join(', ')}</div>
+                    <div><strong>Deprecated dependencies:</strong> {deps.deprecated.map(toStr).join(', ')}</div>
                   </div>
                 )}
                 {deps.risky?.length > 0 && (
                   <div className="alert alert-warning" style={{ marginBottom: 16 }}>
                     <AlertTriangle size={14} />
-                    <div><strong>Risky dependencies:</strong> {deps.risky.join(', ')}</div>
+                    <div><strong>Risky dependencies:</strong> {deps.risky.map(toStr).join(', ')}</div>
                   </div>
                 )}
                 <div className="grid-2">
@@ -301,10 +325,10 @@ export default function Analysis() {
                         Coupling Issues
                       </div>
                       <ul style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        {deps.coupling_issues.map((c: string, i: number) => (
+                        {deps.coupling_issues.map((c: unknown, i: number) => (
                           <li key={i} style={{ color: 'var(--text-secondary)', fontSize: 13, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                             <AlertTriangle size={12} color="var(--warning)" style={{ flexShrink: 0, marginTop: 2 }} />
-                            {c}
+                            {toStr(c)}
                           </li>
                         ))}
                       </ul>
@@ -322,11 +346,11 @@ export default function Analysis() {
                       Detected Pattern
                     </div>
                     <span className="badge badge-purple" style={{ fontSize: 13, padding: '4px 14px' }}>
-                      {arch.pattern || 'Unknown'}
+                      {toStr(arch.pattern) || 'Unknown'}
                     </span>
                   </div>
                   {arch.description && (
-                    <p style={{ color: 'var(--text-secondary)', lineHeight: 1.75, fontSize: 13 }}>{arch.description}</p>
+                    <p style={{ color: 'var(--text-secondary)', lineHeight: 1.75, fontSize: 13 }}>{toStr(arch.description)}</p>
                   )}
                 </div>
                 {arch.components?.length > 0 && (
@@ -335,8 +359,8 @@ export default function Analysis() {
                       Components
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                      {arch.components.map((c: string) => (
-                        <span key={c} className="insight-pill">{c}</span>
+                      {arch.components.map((c: unknown, idx: number) => (
+                        <span key={idx} className="insight-pill">{toStr(c)}</span>
                       ))}
                     </div>
                   </div>
@@ -347,10 +371,10 @@ export default function Analysis() {
                       Architectural Issues
                     </div>
                     <ul style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                      {arch.issues.map((issue: string, i: number) => (
+                      {arch.issues.map((issue: unknown, i: number) => (
                         <li key={i} style={{ color: 'var(--text-secondary)', fontSize: 13, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                           <AlertTriangle size={13} color="var(--warning)" style={{ flexShrink: 0, marginTop: 1 }} />
-                          {issue}
+                          {toStr(issue)}
                         </li>
                       ))}
                     </ul>
@@ -358,6 +382,7 @@ export default function Analysis() {
                 )}
               </div>
             )}
+            </ErrorBoundary>
           </>
         )}
       </div>

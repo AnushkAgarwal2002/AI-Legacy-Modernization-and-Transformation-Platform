@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import AIChatPanel from '../components/AIChatPanel'
+import PageHeader from '../components/PageHeader'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface BatchJob {
@@ -398,13 +399,13 @@ export default function Transformation() {
         />
       )}
 
-      <div className="page-header">
+      <PageHeader>
         <h1>Transformation Workspace</h1>
         <div className="alert alert-warning" style={{ margin: 0, padding: '6px 12px', fontSize: 11 }}>
           <AlertTriangle size={12} />
           AI proposals — developer review required before acceptance
         </div>
-      </div>
+      </PageHeader>
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         {/* ─── Left panel ───────────────────────────────────────────────── */}

@@ -68,7 +68,7 @@ export default function Sidebar() {
             overflow: 'hidden',
             textOverflow: 'ellipsis',
           }}>
-            ModernizeAI
+            ModernIQ
           </div>
           <div style={{
             fontSize: 9,
@@ -77,7 +77,7 @@ export default function Sidebar() {
             letterSpacing: '0.08em',
             whiteSpace: 'nowrap',
           }}>
-            Legacy Platform
+            AI Modernization
           </div>
         </div>
       </div>

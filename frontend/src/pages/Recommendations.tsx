@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { analysisApi } from '../api/client'
 import { Lightbulb, ChevronDown, ChevronRight, Code2 } from 'lucide-react'
 import AIChatPanel from '../components/AIChatPanel'
+import PageHeader from '../components/PageHeader'
 
 const PRIORITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 }
 const CATEGORY_COLORS: Record<string, string> = {
@@ -53,12 +54,12 @@ export default function Recommendations() {
 
   return (
     <div style={{ height: '100%', overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
-      <div className="page-header">
+      <PageHeader>
         <h1>Recommendations</h1>
         <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
           {filtered.length} of {recs.length} recommendations
         </div>
-      </div>
+      </PageHeader>
 
       <div className="page-body">
         {recs.length === 0 ? (

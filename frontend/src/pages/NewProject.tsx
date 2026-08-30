@@ -89,7 +89,7 @@ export default function NewProject() {
             New Modernization Project
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: 14, lineHeight: 1.6 }}>
-            Tell us about your legacy application. IBM Bob will analyze it and guide you through modernization.
+            Tell us about your legacy application. ModernIQ will analyze it and guide you through modernization.
           </p>
         </div>
 

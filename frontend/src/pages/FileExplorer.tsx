@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import AIChatPanel from '../components/AIChatPanel'
+import PageHeader from '../components/PageHeader'
 
 const LANG_COLORS: Record<string, string> = {
   java: '#f89820', javascript: '#f7df1e', typescript: '#3178c6',
@@ -171,7 +172,7 @@ export default function FileExplorer() {
 
   return (
     <div style={{ display: 'flex', height: '100%', flexDirection: 'column' }}>
-      <div className="page-header">
+      <PageHeader>
         <div>
           <h1>File Explorer</h1>
           {files.length > 0 && (
@@ -187,7 +188,7 @@ export default function FileExplorer() {
             Analyze Project
           </button>
         </div>
-      </div>
+      </PageHeader>
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         {/* Left: file tree */}

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import ScoreBar from '../components/ScoreBar'
 import AIChatPanel from '../components/AIChatPanel'
+import PageHeader from '../components/PageHeader'
 import { RadarChart, PolarGrid, PolarAngleAxis, Radar, ResponsiveContainer } from 'recharts'
 
 const SCORE_LABELS: Record<string, string> = {
@@ -108,7 +109,7 @@ export default function Dashboard() {
   return (
     <div style={{ height: '100%', overflow: 'auto' }}>
       {/* Page header */}
-      <div className="page-header">
+      <PageHeader>
         <div style={{ minWidth: 0 }}>
           <h1 style={{
             fontSize: 17,
@@ -153,7 +154,7 @@ export default function Dashboard() {
             </button>
           )}
         </div>
-      </div>
+      </PageHeader>
 
       <div className="page-body">
         {/* Status alerts */}
@@ -165,7 +166,7 @@ export default function Dashboard() {
               <div className="ai-dot" />
             </div>
             <div>
-              <strong>IBM Bob is analyzing your legacy codebase</strong>
+              <strong>ModernIQ is analyzing your legacy codebase</strong>
               {' '}— examining technology stack, architecture, dependencies, and technical debt. This may take 60–120 seconds.
             </div>
           </div>

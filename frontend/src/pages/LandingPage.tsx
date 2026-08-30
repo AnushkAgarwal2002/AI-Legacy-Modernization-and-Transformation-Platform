@@ -258,22 +258,23 @@ export default function LandingPage() {
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         height: 60,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
           <div style={{
-            width: 32, height: 32,
+            width: 36, height: 36,
             background: 'var(--accent)',
-            borderRadius: 8,
+            borderRadius: 9,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             flexShrink: 0,
+            boxShadow: '0 2px 12px rgba(91,126,255,0.35)',
           }}>
-            <Cpu size={17} color="white" />
+            <Cpu size={18} color="white" />
           </div>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.02em' }}>
-              Legacy Modernization Platform
+            <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.04em', lineHeight: 1.1 }}>
+              ModernIQ
             </div>
-            <div style={{ fontSize: 9.5, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>
-              Powered by IBM Bob
+            <div style={{ fontSize: 9.5, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.09em', marginTop: 1 }}>
+              AI-Assisted Legacy Modernization
             </div>
           </div>
         </div>
@@ -318,28 +319,35 @@ export default function LandingPage() {
             marginBottom: 24,
           }}>
             <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--ai)', animation: 'dotPulse 2s ease-in-out infinite' }} />
-            AI-Assisted Legacy Modernization
+            AI-Assisted Modernization Platform
+          </div>
+
+          {/* Product name */}
+          <div style={{
+            fontSize: 'clamp(52px, 7vw, 80px)',
+            fontWeight: 900,
+            letterSpacing: '-0.05em',
+            lineHeight: 1,
+            marginBottom: 12,
+            color: 'var(--accent)',
+            background: 'linear-gradient(135deg, #5B7EFF, #8B5CF6)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text',
+          }}>
+            ModernIQ
           </div>
 
           {/* Headline */}
           <h1 style={{
-            fontSize: 'clamp(30px, 4vw, 50px)',
-            fontWeight: 800,
-            lineHeight: 1.1,
-            letterSpacing: '-0.035em',
+            fontSize: 'clamp(20px, 2.8vw, 34px)',
+            fontWeight: 700,
+            lineHeight: 1.25,
+            letterSpacing: '-0.02em',
             color: 'var(--text)',
             marginBottom: 20,
           }}>
-            Modernize legacy software<br />
-            <span style={{
-              background: 'linear-gradient(135deg, var(--accent), var(--purple))',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text',
-            }}>
-              with AI-assisted
-            </span>
-            <br />engineering intelligence
+            Modernize legacy software<br />with engineering intelligence
           </h1>
 
           {/* Sub */}
@@ -589,7 +597,7 @@ export default function LandingPage() {
               color: 'var(--text-secondary)', fontSize: 14,
               lineHeight: 1.7, marginBottom: 32, maxWidth: 440, margin: '0 auto 32px',
             }}>
-              Import your legacy application, let IBM Bob analyze it, and receive a detailed modernization roadmap in minutes.
+              Import your legacy application, let ModernIQ analyze it, and receive a detailed modernization roadmap in minutes.
             </p>
             <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
               <button
@@ -633,11 +641,11 @@ export default function LandingPage() {
               <Cpu size={14} color="white" />
             </div>
             <div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>
-                Legacy Modernization Platform
+              <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.03em' }}>
+                ModernIQ
               </div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                AI-assisted software modernization
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginTop: 2 }}>
+                AI-Assisted Legacy Modernization
               </div>
             </div>
           </div>
@@ -668,7 +676,7 @@ export default function LandingPage() {
             ))}
           </div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-            Built for the IBM Bob Hackathon
+            Built for the IBM Bob Hackathon · ModernIQ
           </div>
         </div>
       </footer>

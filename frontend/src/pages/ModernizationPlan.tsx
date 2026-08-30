@@ -4,6 +4,7 @@ import { analysisApi } from '../api/client'
 import { ListChecks, CheckCircle, Clock, Circle, AlertCircle, ChevronDown, ChevronRight } from 'lucide-react'
 import toast from 'react-hot-toast'
 import AIChatPanel from '../components/AIChatPanel'
+import PageHeader from '../components/PageHeader'
 
 const STATUS_CONFIG: Record<string, { icon: any; color: string; label: string }> = {
   not_started: { icon: Circle,      color: 'var(--text-muted)', label: 'Not Started' },
@@ -55,7 +56,7 @@ export default function ModernizationPlan() {
 
   if (!plan) return (
     <div style={{ height: '100%', overflow: 'auto' }}>
-      <div className="page-header"><h1>Modernization Plan</h1></div>
+      <PageHeader><h1>Modernization Plan</h1></PageHeader>
       <div className="page-body">
         <div className="empty-state">
           <ListChecks size={44} />
@@ -82,7 +83,7 @@ export default function ModernizationPlan() {
 
   return (
     <div style={{ height: '100%', overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
-      <div className="page-header">
+      <PageHeader>
         <h1>Modernization Plan</h1>
         <div style={{ display: 'flex', gap: 14, fontSize: 12 }}>
           <span style={{ color: 'var(--success)' }}>✓ {done} done</span>
@@ -90,7 +91,7 @@ export default function ModernizationPlan() {
           <span style={{ color: 'var(--danger)' }}>✗ {blocked} blocked</span>
           <span style={{ color: 'var(--text-muted)' }}>{total - done - inProg - blocked} pending</span>
         </div>
-      </div>
+      </PageHeader>
 
       <div className="page-body">
         {/* Overall progress */}

@@ -9,7 +9,7 @@ _ENV_FILE = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
 
 class Settings(BaseSettings):
     # Application
-    app_name: str = "Legacy Modernization Platform"
+    app_name: str = "ModernIQ"
     app_version: str = "1.0.0"
     debug: bool = False
 

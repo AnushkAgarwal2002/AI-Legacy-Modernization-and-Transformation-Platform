@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useParams, Outlet } from 'react-router-dom'
 import { useApp } from './context/AppContext'
 import { projectsApi } from './api/client'
 import Sidebar from './components/Sidebar'
+import ErrorBoundary from './components/ErrorBoundary'
 
 // Pages
 import LandingPage from './pages/LandingPage'
@@ -38,7 +39,9 @@ function ProjectLayout() {
     <div className="app-layout">
       <Sidebar />
       <div className="main-content">
-        <Outlet />
+        <ErrorBoundary>
+          <Outlet />
+        </ErrorBoundary>
       </div>
     </div>
   )
@@ -49,7 +52,9 @@ function AppShell({ children }: { children: React.ReactNode }) {
     <div className="app-layout">
       <Sidebar />
       <div className="main-content">
-        {children}
+        <ErrorBoundary>
+          {children}
+        </ErrorBoundary>
       </div>
     </div>
   )

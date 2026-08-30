@@ -1,5 +1,5 @@
 """
-Legacy Application Modernization Platform — FastAPI Backend
+ModernIQ — AI-Assisted Legacy Application Modernization Platform — FastAPI Backend
 """
 import os
 from fastapi import FastAPI, Request
@@ -28,7 +28,7 @@ os.makedirs(settings.uploads_dir, exist_ok=True)
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
-    description="AI-Assisted Legacy Application Modernization and Transformation Platform",
+    description="ModernIQ — AI-Assisted Legacy Application Modernization and Transformation Platform",
 )
 
 # CORS for local development

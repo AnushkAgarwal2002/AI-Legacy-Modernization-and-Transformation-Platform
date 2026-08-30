@@ -31,7 +31,7 @@ const AppContext = createContext<AppState | null>(null)
 /** Apply theme to <html data-theme="..."> and persist to localStorage. */
 function applyTheme(t: Theme) {
   document.documentElement.setAttribute('data-theme', t)
-  localStorage.setItem('lmp-theme', t)
+  localStorage.setItem('moderniq-theme', t)
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -41,7 +41,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Initialise from localStorage (default dark)
   const [theme, setTheme] = useState<Theme>(() => {
-    const saved = localStorage.getItem('lmp-theme') as Theme | null
+    const saved = localStorage.getItem('moderniq-theme') as Theme | null
     return saved === 'light' ? 'light' : 'dark'
   })
 

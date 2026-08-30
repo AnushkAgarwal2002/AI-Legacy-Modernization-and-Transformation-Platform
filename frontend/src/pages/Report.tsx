@@ -5,6 +5,7 @@ import { FileText, Download, AlertTriangle, RefreshCw } from 'lucide-react'
 import toast from 'react-hot-toast'
 import ScoreBar from '../components/ScoreBar'
 import AIChatPanel from '../components/AIChatPanel'
+import PageHeader from '../components/PageHeader'
 
 const SCORE_LABELS: Record<string, string> = {
   maintainability:     'Maintainability',
@@ -86,7 +87,7 @@ export default function Report() {
 
   return (
     <div style={{ height: '100%', overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
-      <div className="page-header">
+      <PageHeader>
         <h1>Modernization Report</h1>
         <div style={{ display: 'flex', gap: 8 }}>
           {report && (
@@ -111,7 +112,7 @@ export default function Report() {
             </button>
           )}
         </div>
-      </div>
+      </PageHeader>
 
       <div className="page-body">
         {!report && !generating && (
@@ -136,7 +137,7 @@ export default function Report() {
                 <div className="ai-dot" />
                 <div className="ai-dot" />
               </div>
-              IBM Bob is generating your report…
+              ModernIQ is generating your report…
             </div>
             <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8, textAlign: 'center' }}>
               Synthesizing all analysis findings into a comprehensive document.

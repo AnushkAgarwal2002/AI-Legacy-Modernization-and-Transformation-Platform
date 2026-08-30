@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import AIChatPanel from '../components/AIChatPanel'
+import PageHeader from '../components/PageHeader'
 
 const STATUS_CONFIG: Record<string, { icon: any; color: string; label: string; badge: string }> = {
   ready_for_review: { icon: CheckCircle,   color: 'var(--success)', label: 'Ready for Review', badge: 'success' },
@@ -118,7 +119,7 @@ export default function Validation() {
 
   return (
     <div style={{ height: '100%', overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
-      <div className="page-header">
+      <PageHeader>
         <div>
           <h1>Validation Center</h1>
           <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 3 }}>
@@ -138,7 +139,7 @@ export default function Validation() {
             }
           </button>
         )}
-      </div>
+      </PageHeader>
 
       <div className="page-body">
         <div className="alert alert-ai" style={{ marginBottom: 20 }}>

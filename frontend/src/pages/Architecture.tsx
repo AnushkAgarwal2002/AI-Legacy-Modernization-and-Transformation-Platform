@@ -4,6 +4,7 @@ import { analysisApi } from '../api/client'
 import { GitBranch } from 'lucide-react'
 import ArchDiagram from '../components/ArchDiagram'
 import AIChatPanel from '../components/AIChatPanel'
+import PageHeader from '../components/PageHeader'
 
 export default function Architecture() {
   const { projectId } = useParams<{ projectId: string }>()
@@ -28,9 +29,9 @@ export default function Architecture() {
 
   return (
     <div style={{ height: '100%', overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
-      <div className="page-header">
+      <PageHeader>
         <h1>Architecture</h1>
-      </div>
+      </PageHeader>
       <div className="page-body">
         {models.length === 0 ? (
           <div className="empty-state">

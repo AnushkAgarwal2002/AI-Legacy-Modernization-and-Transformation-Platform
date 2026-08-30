@@ -4,6 +4,7 @@ import { analysisApi } from '../api/client'
 import { AlertTriangle, ChevronDown, ChevronRight, Code2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import AIChatPanel from '../components/AIChatPanel'
+import PageHeader from '../components/PageHeader'
 
 const SEVERITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 }
 
@@ -59,12 +60,12 @@ export default function Issues() {
 
   return (
     <div style={{ height: '100%', overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
-      <div className="page-header">
+      <PageHeader>
         <h1>Issues & Technical Debt</h1>
         <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
           {filtered.length} of {issues.length} issues
         </div>
-      </div>
+      </PageHeader>
 
       <div className="page-body">
         {issues.length === 0 ? (

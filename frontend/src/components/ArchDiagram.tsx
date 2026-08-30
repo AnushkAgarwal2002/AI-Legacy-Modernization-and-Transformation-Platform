@@ -71,7 +71,38 @@ function getNodePos(nodes: Node[], width: number, height: number) {
   return positions
 }
 
-export default function ArchDiagram({ nodes, edges, title }: Props) {
+/** Coerce any value to a safe non-empty string, guarding against null / object nodes from AI. */
+function safeStr(v: unknown, fallback = ''): string {
+  if (v == null) return fallback
+  if (typeof v === 'string') return v
+  if (typeof v === 'object') {
+    const o = v as Record<string, unknown>
+    return String(o.name ?? o.label ?? o.title ?? o.id ?? fallback)
+  }
+  return String(v)
+}
+
+export default function ArchDiagram({ nodes: rawNodes, edges: rawEdges, title }: Props) {
+  // Normalise nodes — guard against null labels / ids that crash .length / map key lookups
+  const nodes: Node[] = (rawNodes || [])
+    .filter(n => n != null)
+    .map((n, i) => ({
+      id:          safeStr(n.id, `node-${i}`),
+      label:       safeStr(n.label, `Node ${i + 1}`),
+      type:        safeStr(n.type, 'util'),
+      description: n.description != null ? safeStr(n.description) : undefined,
+    }))
+
+  // Normalise edges — guard against null source/target
+  const edges: Edge[] = (rawEdges || [])
+    .filter(e => e != null && e.source != null && e.target != null)
+    .map(e => ({
+      source: safeStr(e.source),
+      target: safeStr(e.target),
+      label:  e.label != null ? safeStr(e.label) : undefined,
+      type:   e.type  != null ? safeStr(e.type)  : undefined,
+    }))
+
   const svgRef = useRef<SVGSVGElement>(null)
   const [dims, setDims] = useState({ w: 800, h: 500 })
   const [tooltip, setTooltip] = useState<{ x: number; y: number; node: Node } | null>(null)
@@ -83,7 +114,7 @@ export default function ArchDiagram({ nodes, edges, title }: Props) {
     }
   }, [])
 
-  if (!nodes || nodes.length === 0) {
+  if (nodes.length === 0) {
     return (
       <div className="empty-state" style={{ minHeight: 200 }}>
         <p>No architecture data available</p>
@@ -120,13 +151,15 @@ export default function ArchDiagram({ nodes, edges, title }: Props) {
           const src = positions[e.source]
           const tgt = positions[e.target]
           if (!src || !tgt) return null
-          const mx = (src.x + tgt.x) / 2
-          const my = (src.y + tgt.y) / 2
           const dx = tgt.x - src.x
           const dy = tgt.y - src.y
           const len = Math.sqrt(dx * dx + dy * dy)
+          // Skip zero-length edges (self-loops) — dividing by 0 produces NaN
+          if (len === 0) return null
           const ux = dx / len
           const uy = dy / len
+          const mx = (src.x + tgt.x) / 2
+          const my = (src.y + tgt.y) / 2
 
           // Offset endpoints to node edges
           const sx = src.x + ux * (NODE_W / 2)
